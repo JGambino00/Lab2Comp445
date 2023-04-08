@@ -1,23 +1,27 @@
 import { FFmpeg, createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
-import { EncodingMimeType, VideoEncoder, VideoDecoder } from '@mediacapture-encoding/web-codecs';
+
+
 
 
 let mediaRecorder;
 let chunks = [];
 let video;
-let start = new Date();
+let start;
 let startTime = 0;
 let dataBeingRead = false;
 let end;
+let endTime = 0;
 
 function startRecording() {
+      document.crossOriginOpenerPolicy = 'same-origin';
+
+    // Set Cross-Origin-Embedder-Policy header
+    document.crossOriginEmbedderPolicy = 'require-corp';
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(function(stream) {
       video = document.getElementById('video');
       video.srcObject = stream;
       video.play();
-      start = new Date();
-      startTime = start.getTime();
 
 
       mediaRecorder = new MediaRecorder(stream);
@@ -25,6 +29,7 @@ function startRecording() {
       mediaRecorder.ondataavailable = function(event) {
         chunks.push(event.data);
       };
+
       console.log(chunks);
 
       mediaRecorder.start();
@@ -36,16 +41,9 @@ function startRecording() {
 
 function stopRecording() {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        //const ffmpeg = createFFmpeg({ log: true });
 
         mediaRecorder.stop();
         video.pause();
-        
-        end = new Date();
-        let duration =  (end.getTime() - startTime)/1000;
-        console.log("DUration: "+duration);
-        var mediaSource = new MediaSource();
-    
         var blob = new Blob(chunks, { type : 'video/mp4' });
 
         let encodedBlob = encodeVideo(blob);
@@ -96,64 +94,35 @@ function stopRecording() {
       }
 }
 
-const encodeVideo = async (blob) => {
-    // Create a VideoEncoder instance
-    const encoder = new VideoEncoder({
-      mimeType: EncodingMimeType.H264,
-      width: 1280,
-      height: 720,
-      bitrate: 5000000, // 5Mbps bitrate
-      framerate: 30,
-    });
-  
-    // Open the encoder
-    await encoder.configure();
-  
-    // Create a ReadableStream from the Blob
-    const stream = blob.stream();
-  
-    // Get a ReadableStreamDefaultReader instance
-    const reader = stream.getReader();
-  
-    // Read chunks of the Blob and feed them into the encoder
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      await encoder.encode(value);
-    }
-  
-    // Flush the encoder
-    await encoder.flush();
-  
-    // Get the encoded data as a Blob
-    const encodedBlob = await encoder.close();
-  
-    return encodedBlob;
-  };
 
-// async function encodeVideo(blob) {
-//     const ffmpeg = createFFmpeg({ log: true });
-//     await ffmpeg.load();
-  
-//     // create an input file from the blob
-//     ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(blob));
-  
-//     // set the target bitrate to 5 Mbps
-//     ffmpeg.setVideoBitrate('5M');
-  
-//     // run the ffmpeg command to encode the video
-//     await ffmpeg.run('-i', 'input.mp4', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'segment', '-segment_time', '3', '-map', '0', '-segment_format', 'mp4', 'output%03d.mp4');
-  
-//     // read the output file from memory
-//     const output = ffmpeg.FS('readFile', 'output.mp4');
-  
-//     // create a blob from the output file
-//     const encodedBlob = new Blob([output.buffer], { type: 'video/mp4' });
 
-//     // return the encoded video blob
-//     return encodedBlob;
-//   }
+async function encodeVideo(blob) {
+    const ffmpeg = createFFmpeg({ log: true });
+    await ffmpeg.load({headers: {'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp'}});
+    let encodedBlob;
+  
+    // create an input file from the blob
+    ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(blob));
+
+    let writer;
+  
+    // run the ffmpeg command to encode the video
+    ffmpeg.run('-i', 'input.mp4', '-c:v', 'libx264','-b:v', '5M', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', 'output%03d.mp4').then(() => {
+      console.log('Video encoding complete');
+
+      console.log("Writer")
+      console.log(writer);
+      
+      const encodedBlob = new Blob([encodedBlob.buffer], { type: 'video/mp4' });
+      return encodedBlob;
+    }).catch((error) => {
+      console.log("error we caught");
+      console.log(error);
+    })
+
+
+    return null;
+    
+  }
 
 export{startRecording, stopRecording}
