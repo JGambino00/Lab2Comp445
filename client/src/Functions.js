@@ -1,5 +1,5 @@
 import { FFmpeg, createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
-
+import axios from 'axios';
 
 
 
@@ -60,51 +60,45 @@ function startRecording() {
       mediaRecorder.ondataavailable = function(ev) {
           chunks.push(ev.data);
       }
-      mediaRecorder.onstop = (ev)=>{
+      let bytesProcessed = 1;
+      mediaRecorder.onstop = async (ev)=>{
           let blob = new Blob(chunks, { 'type' : 'video/mp4;' });
-          let encodedBlob = encodeVideo(blob);
+          let encodedBlob = [];
+          encodedBlob = await encodeVideo(blob);
           chunks = [];
-          console.log("Blob");
-          console.log(blob);
+          let fileName = '';
+          let count = 1
+          console.log(encodedBlob.length);
+          for(let i =0; i<encodedBlob.length; i++){
+            let blobToSend = new Blob([encodedBlob[i]], {'type' : 'video/mp4'});
+            fileName = 'output' + count;
+        
+            console.log(count);
+            count++;
+            console.log(blobToSend);
+            axios.post('http://localhost:8080/acknowledge', {data: encodedBlob[i], name: fileName, seqNum: bytesProcessed})
+            .then(response => {
+              console.log('Acknowledgment received: ', response.data);
+              if(response.data.seqNum == bytesProcessed+encodedBlob[i].length){
+                bytesProcessed += encodedBlob[i].length;
+              } 
 
-          const mediaSource = new MediaSource();
-          const videoElement = document.createElement('videoForFrames');
-          videoElement.src = URL.createObjectURL(mediaSource);
-
-          mediaSource.addEventListener('sourceopen', () => {
-            const sourceBuffer = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.64001e"');
-            sourceBuffer.addEventListener('updateend', () => {
-                sourceBuffer.appendBuffer(blob);
-                console.log("appended");
-              });
-          });
-
-
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
+            })
+            .catch(error => {
+              console.log('Error: ', error);
+            });
           
-          function drawFrame() {
-            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            console.log("Image data");
-            console.log(imageData);
-            requestAnimationFrame(drawFrame);
           }
-
-
-          videoElement.addEventListener('loadedmetadata', () => {
-            drawFrame();
-          });
-
-          
-
-          
-
-
-          console.log(1)
-          let videoURL = URL.createObjectURL(blob);
-          vidSave.src = videoURL;
-          console.log(2)
+          // encodedBlob.forEach(element => {
+          //   let blobToSend = new Blob([element], {'type' : 'video/mp4'});
+          //   axios.post('/acknowledge', element)
+          //   .then(response => {
+          //     console.log('Acknowledgment received: ', response.data);
+          //   })
+          //   .catch(error => {
+          //     console.log('Error: ', error);
+          //   });
+          // });
       }
   })
   .catch(function(err) { 
@@ -150,41 +144,28 @@ async function encodeVideo(blob) {
     // create an input file from the blob
     ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(blob));
 
-    let writer;
+   
   
     // run the ffmpeg command to encode the video
     await ffmpeg.run('-i', 'input.mp4', '-c:v', 'libx264','-b:v', '5000k', '-filter_complex', '[0:v]setpts=PTS','-r','30','-segment_time', 3,'-s', '1280x720', 'output%03d.mp4');
 
-    let errorReading = false;
-    let filecount =1;
-    let prefix = 'output';
-    let suffix = '.mp4';
-
-    while(!errorReading){
-        try{
-            let midString = filecount.toString().padStart(3,'0');
-            let fileName = prefix + midString + suffix;
-            console.log("Trying");
-            console.log(fileName);
-            let uintArray = ffmpeg.FS('readFile', fileName);
-            filecount++;
-        }
-        catch(err){
-            console.log("Finsihed Reading");
-            console.log(err);
-            errorReading = true;
-        }
+    let segmentArray = [];
+    try{   
+      let uintArray = ffmpeg.FS('readFile', 'output%03d.mp4');
+      const segmentSize = 1875000;
+      console.log(uintArray.length);
+      for(let i=0; i< uintArray.length; i+=segmentSize){
+        const segment = uintArray.slice(i, i+segmentSize);
+        segmentArray.push(segment);
+      }
+      console.log(segmentArray);  
+      console.log(segmentArray.length);      
+    }
+    catch(err){
+        console.log(err);  
     }
 
-    let uintArray = ffmpeg.FS('readFile', 'output%03d.mp4');
-    console.log("read successfully");
-
-    console.log("uintarray");
-    console.log(uintArray);
-    
-
-
-    return null;
+    return segmentArray;
     
   }
 
