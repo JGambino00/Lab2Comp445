@@ -73,32 +73,44 @@ function startRecording() {
             let blobToSend = new Blob([encodedBlob[i]], {'type' : 'video/mp4'});
             fileName = 'output' + count;
         
-            console.log(count);
+            console.log('Transmitting count: ' + count);
             count++;
             console.log(blobToSend);
-            axios.post('http://localhost:8080/acknowledge', {data: encodedBlob[i], name: fileName, seqNum: bytesProcessed})
-            .then(response => {
-              console.log('Acknowledgment received: ', response.data);
-              if(response.data.seqNum == bytesProcessed+encodedBlob[i].length){
-                bytesProcessed += encodedBlob[i].length;
-              } 
 
+            const timeoutPromise = new Promise((resolve, reject) => {
+              setTimeout(() => {
+                reject(new Error('Comp 445 Request timed out'));
+              }, 5000); // timeout after 5 seconds
+            });
+
+            await Promise.race([
+              axios.post('http://localhost:8080/acknowledge', {data: encodedBlob[i], name: fileName, seqNum: bytesProcessed}),
+              timeoutPromise
+            ]).then(response => {
+              
+                if(response.data['ackNumber'] == bytesProcessed+encodedBlob[i].length){
+                  bytesProcessed += encodedBlob[i].length;
+                  
+                } else {
+                  i--;
+                  count--;
+                  console.log('Incorrect number, re-transmitting')
+                }
+              
+              
+              
             })
             .catch(error => {
               console.log('Error: ', error);
+              console.log(error.message.includes('Comp 445 Request timed out'))
+              if(error.message.includes('Comp 445 Request timed out')){      
+                i--;
+                count--;
+              }
             });
           
           }
-          // encodedBlob.forEach(element => {
-          //   let blobToSend = new Blob([element], {'type' : 'video/mp4'});
-          //   axios.post('/acknowledge', element)
-          //   .then(response => {
-          //     console.log('Acknowledgment received: ', response.data);
-          //   })
-          //   .catch(error => {
-          //     console.log('Error: ', error);
-          //   });
-          // });
+         
       }
   })
   .catch(function(err) { 
@@ -112,25 +124,6 @@ function stopRecording() {
         mediaRecorder.stop();
         video.pause();
         var blob = new Blob(chunks, { type : 'video/mp4' });
-/*
-        let encodedBlob = encodeVideo(blob);
-        console.log('Encoded Blob:');
-        console.log(encodedBlob);
-        let bitrate =  encodedBlob.bitrate;
-        
-        var fileSize = encodedBlob.size;
-        //var bitrate = fileSize / duration;
-        console.log('Byterate: ' + bitrate + ' Bps');
-        let fileReader = new FileReader();
-    
-        fileReader.addEventListener('load', () => {
-          var content = fileReader.result; // this is the content of the Blob segment
-          console.log("done")
-          console.log(content);
-          dataBeingRead = false;
-        })
-    
-        */
     
       }
 }

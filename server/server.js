@@ -38,7 +38,7 @@ app.use(cors({
 app.post('/acknowledge', (req, res) => {
     res.header('Access-Control-Allow-Origin', '*');
  
-    res.json({message: 'Request received'});
+    //res.json({message: 'Request received'});
     
     let query = 'INSERT INTO videoSegments (name, data) VALUES (?, ?)';
 
@@ -56,13 +56,28 @@ app.post('/acknowledge', (req, res) => {
     //let blobToInsert = new Blob(uint8Array, {type : 'video/mp4'});
     
     let bufferToInsert = Buffer.from(uint8Array);
-    connection.query(query, [req.body['name'], bufferToInsert], (error, results, fields) => {
-        if(error) throw error;
-        console.log('Data inserted succesfully');
-    })
+    
+      connection.query(query, [req.body['name'], bufferToInsert], (error, results, fields) => {
+        try{
+          //if(error) throw error;
+          if(error){
+            throw error.code;
+          } 
+          console.log('Data inserted succesfully');
 
-    
-    
+        } catch(error){       
+          if(error == 'ER_DUP_ENTRY'){
+            //Do nothing
+          }
+        }
+          
+      })
+
+    let jsonObject = JSON.parse(jsonString);
+    //console.log(jsonObject);
+    let jsonArr = Object.keys(jsonObject);
+    //console.log(jsonArr.length);
+    res.send({ackNumber : req.body['seqNum'] + jsonArr.length});
 });
 
 // Start the server
